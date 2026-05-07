@@ -1,12 +1,20 @@
-import { router, useLocalSearchParams } from "expo-router"
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router"
+import { Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"
 
 import { colors } from "@/constants/theme"
 import { useNotes } from "@/hooks/useNotes"
+import { useCallback } from "react"
 
 export default function NoteDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
-  const { notas, eliminarNota } = useNotes()
+  const { notas, eliminarNota, recargar } = useNotes()
+
+  useFocusEffect(
+    useCallback(() => {
+      void recargar()
+    }, [recargar])
+  )
+
   const nota = notas.find((n) => n.id === id)
 
   if (!nota) {
@@ -23,17 +31,23 @@ export default function NoteDetailScreen() {
   }
 
   const handleEliminar = () => {
-    Alert.alert("Eliminar nota", "¿Estás seguro?", [
-      { text: "Cancelar", style: "cancel" },
-      {
-        text: "Eliminar",
-        style: "destructive",
-        onPress: async () => {
-          await eliminarNota(id!)
-          router.back()
+    if (Platform.OS === "web") {
+      if (window.confirm("¿Estás seguro?")) {
+        eliminarNota(id!).then(() => router.back())
+      }
+    } else {
+      Alert.alert("Eliminar nota", "¿Estás seguro?", [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Eliminar",
+          style: "destructive",
+          onPress: async () => {
+            await eliminarNota(id!)
+            router.back()
+          },
         },
-      },
-    ])
+      ])
+    }
   }
 
   return (

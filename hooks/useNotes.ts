@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from "react"
 import AsyncStorage from "@react-native-async-storage/async-storage"
-import type { Nota, CreateNotaInput, UpdateNotaInput } from "../types/nota"
+import { useCallback, useEffect, useState } from "react"
+import type { CreateNotaInput, Nota, UpdateNotaInput } from "../types/nota"
 
 const STORAGE_KEY = "notas"
 

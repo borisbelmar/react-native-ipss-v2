@@ -4,11 +4,12 @@ import { useCallback } from "react"
 import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 
+import NoteItem from "@/components/note-item"
 import { colors } from "@/constants/theme"
 import { useNotes } from "@/hooks/useNotes"
 
 export default function NotesListScreen() {
-  const { notas, loading, error, recargar, eliminarNota } = useNotes()
+  const { notas, loading, error, recargar } = useNotes()
 
   useFocusEffect(
     useCallback(() => {
@@ -51,19 +52,10 @@ export default function NotesListScreen() {
         data={notas}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <TouchableOpacity
-            style={styles.card}
+          <NoteItem
+            item={item}
             onPress={() => router.push({ pathname: "/(tabs)/notes/[id]", params: { id: item.id } })}
-            onLongPress={() => eliminarNota(item.id)}
-          >
-            <Text style={styles.cardTitle}>{item.titulo}</Text>
-            <Text style={styles.cardContent} numberOfLines={2}>
-              {item.contenido}
-            </Text>
-            <Text style={styles.cardDate}>
-              {new Date(item.creadaEn).toLocaleDateString()}
-            </Text>
-          </TouchableOpacity>
+          />
         )}
         ListEmptyComponent={
           <View style={styles.centered}>
@@ -85,10 +77,6 @@ const styles = StyleSheet.create({
   addButton: { fontSize: 28, color: colors.tint, fontWeight: "bold", paddingHorizontal: 8 },
   list: { paddingHorizontal: 16, paddingTop: 0 },
   emptyList: { flexGrow: 1 },
-  card: { backgroundColor: colors.surface, borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: colors.border },
-  cardTitle: { fontSize: 16, fontWeight: "600", color: colors.text, marginBottom: 4 },
-  cardContent: { fontSize: 14, color: colors.muted, marginBottom: 8 },
-  cardDate: { fontSize: 12, color: colors.muted },
   errorText: { fontSize: 16, color: colors.danger, marginBottom: 12 },
   retryText: { fontSize: 16, color: colors.tint, fontWeight: "600" },
   emptyText: { fontSize: 18, color: colors.muted, marginBottom: 4 },

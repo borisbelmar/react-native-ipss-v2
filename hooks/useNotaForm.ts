@@ -29,8 +29,7 @@ export const useNotaForm = ({ mode, defaultValues, onSubmit }: Props) => {
 
   const handleSubmit = async () => {
     const schema = mode === "create" ? createNotaSchema : updateNotaSchema;
-    const data =
-      mode === "create" ? { titulo, contenido } : { titulo, contenido };
+    const data = { titulo, contenido }
 
     const result = schema.safeParse(data);
 
