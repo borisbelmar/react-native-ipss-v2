@@ -22,7 +22,7 @@ export function useLogin() {
 
     setError("");
     router.push({
-      pathname: "/(tabs)",
+      pathname: "/(tabs)/notes",
     });
   };
 
