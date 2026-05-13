@@ -1,4 +1,4 @@
-const BASE_URL = "https://hono-api-yt2r.onrender.com"
+import { BASE_URL } from "./api"
 
 export const uploadImage = async (uri: string, token: string): Promise<string> => {
   const filename = uri.split("/").pop() ?? "photo.jpg"

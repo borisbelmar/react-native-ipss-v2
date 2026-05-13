@@ -1,4 +1,4 @@
-const BASE_URL = "https://hono-api-yt2r.onrender.com"
+export const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? "https://hono-api-yt2r.onrender.com"
 
 const request = async <T>(
   path: string,
