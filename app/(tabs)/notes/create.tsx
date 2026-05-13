@@ -7,6 +7,7 @@ import { useImagePicker } from "@/hooks/useImagePicker"
 import { useLocation } from "@/hooks/useLocation"
 import { useNotaForm } from "@/hooks/useNotaForm"
 import { useNotes } from "@/hooks/useNotes"
+import type { CreateNotaInput } from "@/types/nota"
 
 export default function CreateNoteScreen() {
   const { crearNota } = useNotes()
@@ -17,7 +18,7 @@ export default function CreateNoteScreen() {
     mode: "create",
     onSubmit: async (data) => {
       await crearNota({
-        ...data,
+        ...(data as CreateNotaInput),
         photoUri: imageUri ?? undefined,
         location: location ?? undefined,
       })
