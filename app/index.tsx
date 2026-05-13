@@ -1,3 +1,4 @@
+import { Redirect } from "expo-router"
 import { useState } from "react"
 import {
   ActivityIndicator,
@@ -15,21 +16,35 @@ import { colors } from "@/constants/theme"
 import { useAuth } from "@/hooks/useAuth"
 
 export default function LoginScreen() {
-  const { login } = useAuth()
+  const { token, loading, login } = useAuth()
   const [email, setEmail] = useState("pepe@example.com")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
-  const [loading, setLoading] = useState(false)
+  const [loggingIn, setLoggingIn] = useState(false)
+
+  if (loading) {
+    return (
+      <View style={styles.screen}>
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color={colors.tint} />
+        </View>
+      </View>
+    )
+  }
+
+  if (token) {
+    return <Redirect href="/(tabs)/notes" />
+  }
 
   const handleLogin = async () => {
-    setLoading(true)
+    setLoggingIn(true)
     setError("")
     try {
       await login(email, password)
     } catch {
       setError("Credenciales inválidas o error de conexión")
     } finally {
-      setLoading(false)
+      setLoggingIn(false)
     }
   }
 
@@ -66,8 +81,8 @@ export default function LoginScreen() {
             style={styles.input}
           />
 
-          <TouchableOpacity style={styles.button} onPress={handleLogin} disabled={loading}>
-            {loading ? (
+          <TouchableOpacity style={styles.button} onPress={handleLogin} disabled={loggingIn}>
+            {loggingIn ? (
               <ActivityIndicator color="#fff" />
             ) : (
               <Text style={styles.buttonText}>Login</Text>
@@ -83,6 +98,7 @@ export default function LoginScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
+  centered: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
   container: {
     flexGrow: 1,
     alignItems: "center",
