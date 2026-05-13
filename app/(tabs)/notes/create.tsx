@@ -1,15 +1,18 @@
 import { router } from "expo-router"
-import { Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native"
+import { Alert, Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native"
 
 import { IconSymbol } from "@/components/ui/icon-symbol"
 import { colors } from "@/constants/theme"
+import { useAuth } from "@/hooks/useAuth"
 import { useImagePicker } from "@/hooks/useImagePicker"
 import { useLocation } from "@/hooks/useLocation"
 import { useNotaForm } from "@/hooks/useNotaForm"
 import { useNotes } from "@/hooks/useNotes"
+import { uploadImage } from "@/services/upload.service"
 import type { CreateNotaInput } from "@/types/nota"
 
 export default function CreateNoteScreen() {
+  const { token } = useAuth()
   const { crearNota } = useNotes()
   const { imageUri, pickFromGallery, takePhoto, clearImage } = useImagePicker()
   const { location, loading: locLoading, getCurrentLocation, clearLocation } = useLocation()
@@ -17,9 +20,19 @@ export default function CreateNoteScreen() {
   const form = useNotaForm({
     mode: "create",
     onSubmit: async (data) => {
+      let photoUri: string | undefined
+      if (imageUri && token) {
+        try {
+          photoUri = await uploadImage(imageUri, token)
+        } catch {
+          Alert.alert("Error", "No se pudo subir la imagen")
+          return
+        }
+      }
+
       await crearNota({
         ...(data as CreateNotaInput),
-        photoUri: imageUri ?? undefined,
+        photoUri,
         location: location ?? undefined,
       })
       router.back()
