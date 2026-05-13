@@ -15,12 +15,15 @@ import {
 import { colors } from "@/constants/theme"
 import { useAuth } from "@/hooks/useAuth"
 
+type Mode = "login" | "register"
+
 export default function LoginScreen() {
-  const { token, loading, login } = useAuth()
+  const { token, loading, login, register } = useAuth()
+  const [mode, setMode] = useState<Mode>("login")
   const [email, setEmail] = useState("pepe@example.com")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
-  const [loggingIn, setLoggingIn] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
 
   if (loading) {
     return (
@@ -36,16 +39,25 @@ export default function LoginScreen() {
     return <Redirect href="/(tabs)/notes" />
   }
 
-  const handleLogin = async () => {
-    setLoggingIn(true)
+  const handleSubmit = async () => {
+    setSubmitting(true)
     setError("")
     try {
-      await login(email, password)
-    } catch {
-      setError("Credenciales inválidas o error de conexión")
+      if (mode === "login") {
+        await login(email, password)
+      } else {
+        await register(email, password)
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error de conexión")
     } finally {
-      setLoggingIn(false)
+      setSubmitting(false)
     }
+  }
+
+  const toggleMode = () => {
+    setMode(mode === "login" ? "register" : "login")
+    setError("")
   }
 
   return (
@@ -60,7 +72,9 @@ export default function LoginScreen() {
         automaticallyAdjustKeyboardInsets={Platform.OS === "ios"}
       >
         <View style={styles.card}>
-          <Text style={styles.title}>Login Screen</Text>
+          <Text style={styles.title}>
+            {mode === "login" ? "Iniciar sesión" : "Crear cuenta"}
+          </Text>
 
           <TextInput
             placeholder="Email"
@@ -81,12 +95,22 @@ export default function LoginScreen() {
             style={styles.input}
           />
 
-          <TouchableOpacity style={styles.button} onPress={handleLogin} disabled={loggingIn}>
-            {loggingIn ? (
+          <TouchableOpacity style={styles.button} onPress={handleSubmit} disabled={submitting}>
+            {submitting ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.buttonText}>Login</Text>
+              <Text style={styles.buttonText}>
+                {mode === "login" ? "Ingresar" : "Registrarse"}
+              </Text>
             )}
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={toggleMode} style={styles.toggle}>
+            <Text style={styles.toggleText}>
+              {mode === "login"
+                ? "¿No tienes cuenta? Regístrate"
+                : "¿Ya tienes cuenta? Inicia sesión"}
+            </Text>
           </TouchableOpacity>
 
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -128,5 +152,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   buttonText: { color: "#fff", fontSize: 16, fontWeight: "bold" },
+  toggle: { marginTop: 16 },
+  toggleText: { color: colors.tint, fontSize: 14 },
   errorText: { color: colors.danger, marginTop: 10 },
 })

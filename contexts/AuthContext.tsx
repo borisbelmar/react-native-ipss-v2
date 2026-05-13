@@ -10,6 +10,7 @@ export interface AuthContextType {
   token: string | null
   loading: boolean
   login: (email: string, password: string) => Promise<void>
+  register: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
 }
 
@@ -41,6 +42,19 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     [router],
   )
 
+  const register = useCallback(
+    async (email: string, password: string) => {
+      const { token: newToken } = await apiService.post<{ token: string }>(
+        "/auth/register",
+        { email, password },
+      )
+      await SecureStore.setItemAsync(TOKEN_KEY, newToken)
+      setToken(newToken)
+      router.replace("/(tabs)/notes")
+    },
+    [router],
+  )
+
   const logout = useCallback(async () => {
     await SecureStore.deleteItemAsync(TOKEN_KEY)
     setToken(null)
@@ -48,7 +62,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, [router])
 
   return (
-    <AuthContext.Provider value={{ token, loading, login, logout }}>
+    <AuthContext.Provider value={{ token, loading, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   )
