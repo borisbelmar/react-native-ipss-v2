@@ -1,14 +1,16 @@
 # App de Notas — React Native + Expo
 
 > Este documento no solo explica qué hace la app, sino **cómo se pensó cada decisión** mientras la construíamos. Si estás aprendiendo React Native, la idea es que leas esto y entiendas el porqué de cada archivo.
+>
+> Este README documenta el estado actual del proyecto después de completar la **Unidad 2 (CRUD local con AsyncStorage)** y la **Unidad 3 - Parte A (APIs del dispositivo: cámara, galería y GPS)**.
 
 ---
 
 ## ¿Qué es esto?
 
-Una app de notas simple pero completa: puedes crear notas, verlas, editarlas y eliminarlas. Todo se guarda en el teléfono (no necesita internet ni backend) usando AsyncStorage.
+Una app de notas simple pero completa: puedes crear notas, verlas, editarlas y eliminarlas. Las notas pueden incluir **fotos** (desde la cámara o galería) y **ubicación GPS**. Todo se guarda en el teléfono (no necesita internet ni backend) usando AsyncStorage.
 
-Construida con **React Native**, **Expo**, **TypeScript**, **Expo Router**, **AsyncStorage** y **Zod**.
+Construida con **React Native**, **Expo**, **TypeScript**, **Expo Router**, **AsyncStorage**, **Zod**, **expo-image-picker** y **expo-location**.
 
 ---
 
@@ -22,6 +24,8 @@ Construida con **React Native**, **Expo**, **TypeScript**, **Expo Router**, **As
 | **TypeScript** | ~5.9 | El compilador nos avisa si escribimos algo mal antes de correr la app |
 | **AsyncStorage** | 2.x | Guarda las notas en el teléfono. Es como `localStorage` pero asíncrono |
 | **Zod** | 4.x | Validamos formularios y obtenemos tipos TypeScript automáticamente |
+| **expo-image-picker** | 17.x | Acceso a cámara y galería para adjuntar fotos a las notas |
+| **expo-location** | 19.x | Acceso al GPS para registrar dónde se creó cada nota |
 
 ---
 
@@ -112,18 +116,24 @@ navigation.getParent()?.dispatch(
 Antes de escribir la lógica de las notas, definimos su forma. Esto parece un paso extra, pero en TypeScript es fundamental: si los tipos están claros, el compilador te avisa cuando algo no encaja, incluso antes de correr la app.
 
 ```tsx
-// types/nota.ts
+// types/nota.ts — versión con foto y ubicación
 
 export interface Nota {
   id: string
   titulo: string
   contenido: string
   creadaEn: string
+  photoUri?: string          // URI local de la imagen adjunta
+  location?: {               // Coordenadas GPS
+    latitude: number
+    longitude: number
+  }
 }
 
 // Para crear una nota, solo necesitamos título y contenido
 // El id y la fecha los genera el sistema, no el usuario
-export type CreateNotaInput = Pick<Nota, "titulo" | "contenido">
+// photoUri y location son opcionales — no toda nota necesita foto ni GPS
+export type CreateNotaInput = Pick<Nota, "titulo" | "contenido" | "photoUri" | "location">
 
 // Para editar, ambos campos son opcionales
 // Podés cambiar solo el título, solo el contenido, o ambos
@@ -471,7 +481,199 @@ Lista de notas (notes/index.tsx)
 
 ---
 
-## Responsabilidades separadas
+### Paso 7: APIs del dispositivo — cámara, galería y GPS
+
+En la Unidad 3 extendimos la app para acceder al hardware del teléfono. Las notas ahora pueden llevar foto adjunta y coordenadas GPS.
+
+#### ¿Qué cambió en el modelo de datos?
+
+`Nota` se extendió con dos campos opcionales. Son opcionales (`?`) porque no toda nota necesita foto ni ubicación — una nota de texto simple sigue funcionando igual que antes.
+
+```typescript
+export interface Nota {
+  id: string
+  titulo: string
+  contenido: string
+  creadaEn: string
+  photoUri?: string           // file:///data/.../photo.jpg
+  location?: {
+    latitude: number          // -33.4489
+    longitude: number         // -70.6693
+  }
+}
+```
+
+#### El sistema de permisos en Expo
+
+El hardware del teléfono (cámara, GPS) no está disponible libremente. El sistema operativo exige que la app **pida permiso al usuario** antes de acceder.
+
+```typescript
+// Patrón estándar para cualquier permiso en Expo
+const { status } = await ImagePicker.requestCameraPermissionsAsync()
+if (status !== "granted") {
+  // El usuario rechazó — nunca explotar sin permiso
+  return
+}
+// El usuario aceptó — proceder con el hardware
+```
+
+**Regla de oro:** Nunca asumas que tienes el permiso. El usuario puede revocarlo desde la configuración del teléfono en cualquier momento.
+
+#### Instalación
+
+```bash
+npx expo install expo-image-picker
+npx expo install expo-location
+```
+
+> **¿Por qué `npx expo install` en vez de `yarn add`?** `expo install` elige automáticamente la versión compatible con tu SDK de Expo. Si usas `yarn add` directo puedes instalar una versión incompatible y tener errores difíciles de diagnosticar.
+
+#### `useImagePicker` — cámara y galería
+
+`hooks/useImagePicker.ts` encapsula el acceso a la cámara y galería con manejo de permisos.
+
+```typescript
+export const useImagePicker = () => {
+  const [imageUri, setImageUri] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const pickFromGallery = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync()
+    if (!permission.granted) {
+      setError("Se necesita acceso a la galería")
+      return
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      quality: 0.7,
+    })
+    if (!result.canceled) {
+      setImageUri(result.assets[0].uri)
+      setError(null)
+    }
+  }
+
+  const takePhoto = async () => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync()
+    if (!permission.granted) {
+      setError("Se necesita acceso a la cámara")
+      return
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      quality: 0.7,
+    })
+    if (!result.canceled) {
+      setImageUri(result.assets[0].uri)
+      setError(null)
+    }
+  }
+
+  const clearImage = () => setImageUri(null)
+
+  return { imageUri, error, pickFromGallery, takePhoto, clearImage }
+}
+```
+
+> **`result.canceled` vs `result.cancelled`:** Usa `canceled` (sin doble l). La versión antigua de la librería usaba `cancelled` — si ves ese error en código viejo, es esto.
+
+#### `useLocation` — GPS
+
+`hooks/useLocation.ts` obtiene las coordenadas actuales del dispositivo.
+
+```typescript
+export const useLocation = () => {
+  const [location, setLocation] = useState<LocationData | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const getCurrentLocation = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync()
+      if (status !== "granted") {
+        setError("Se necesita permiso para acceder a la ubicación")
+        return
+      }
+      const loc = await Location.getCurrentPositionAsync({})
+      setLocation({
+        latitude: loc.coords.latitude,
+        longitude: loc.coords.longitude,
+      })
+    } catch {
+      setError("No se pudo obtener la ubicación")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const clearLocation = () => setLocation(null)
+
+  return { location, loading, error, getCurrentLocation, clearLocation }
+}
+```
+
+> **Solo foreground:** Usamos `requestForegroundPermissionsAsync`, no `requestBackgroundPermissionsAsync`. Es suficiente para registrar dónde se creó la nota — no necesitamos ubicación en segundo plano.
+
+#### Cómo se integran en la pantalla de crear nota
+
+Los hooks `useImagePicker` y `useLocation` se usan de forma independiente en `create.tsx`. Al hacer submit, sus valores se convierten en campos opcionales del objeto `Nota`:
+
+```typescript
+const { imageUri, takePhoto, pickFromGallery, clearImage } = useImagePicker()
+const { location, getCurrentLocation, clearLocation } = useLocation()
+
+const form = useNotaForm({
+  mode: "create",
+  onSubmit: async (data) => {
+    await crearNota({
+      ...(data as CreateNotaInput),
+      photoUri: imageUri ?? undefined,
+      location: location ?? undefined,
+    })
+    router.back()
+  },
+})
+```
+
+El hook `useNotes` no necesita saber nada de cámara ni GPS. Solo recibe el objeto y lo persiste en AsyncStorage con los campos que vengan. **Eso es exactamente lo que hace valiosa la arquitectura de custom hooks.**
+
+#### Cómo se muestran en la pantalla de detalle
+
+En `[id]/index.tsx`, si la nota tiene foto o ubicación, se renderizan condicionalmente:
+
+```typescript
+{nota.photoUri && (
+  <>
+    <Text style={styles.sectionTitle}>Foto</Text>
+    <Image source={{ uri: nota.photoUri }} style={styles.image} />
+  </>
+)}
+
+{nota.location && (
+  <>
+    <Text style={styles.sectionTitle}>Ubicación</Text>
+    <View style={styles.locationRow}>
+      <IconSymbol name="location.fill" size={16} color={colors.muted} />
+      <Text>{nota.location.latitude.toFixed(4)}, {nota.location.longitude.toFixed(4)}</Text>
+    </View>
+  </>
+)}
+```
+
+En la lista (`note-item.tsx`), las notas con foto o ubicación muestran badges indicadores con íconos de cámara y ubicación.
+
+#### Errores frecuentes — Parte A
+
+| Error | Causa | Solución |
+|---|---|---|
+| `Permission denied` en cámara | No se pidió permiso antes de `launchCameraAsync` | Siempre llama `requestCameraPermissionsAsync()` primero |
+| La foto no persiste al cerrar la app | No se guardó `photoUri` en la nota | Incluir `photoUri` en el objeto `Nota` al crear |
+| `getCurrentPositionAsync` demora mucho | El GPS tarda en obtener señal | Mostrar un loading mientras se obtiene |
+| `result.cancelled` (doble l) es undefined | API antigua, la propiedad cambió | Usar `result.canceled` (sin doble l) |
 
 Cada capa del proyecto tiene una sola responsabilidad. Si mezclas lógica en el componente, se vuelve difícil de entender:
 
@@ -481,6 +683,8 @@ Cada capa del proyecto tiene una sola responsabilidad. Si mezclas lógica en el 
 | **Validación** | `schemas/nota.schema.ts` | Reglas de negocio de los formularios. Zod genera los tipos. |
 | **CRUD** | `hooks/useNotes.ts` | Lee y escribe en AsyncStorage. Patrón read-modify-write. |
 | **Formulario** | `hooks/useNotaForm.ts` | Estado, errores y submit. Valida con Zod antes de enviar. |
+| **Cámara/Galería** | `hooks/useImagePicker.ts` | Permisos, captura de foto y selección de galería. |
+| **GPS** | `hooks/useLocation.ts` | Permisos de ubicación y obtención de coordenadas. |
 | **Vistas** | `app/(tabs)/notes/*.tsx` | Renderiza la UI y captura eventos del usuario. |
 | **Navegación** | `*/_layout.tsx` | Define rutas, transiciones y cabeceras. |
 
@@ -507,6 +711,14 @@ yarn android        # Directo al emulador Android
 yarn ios            # Directo al simulador iOS (solo Mac)
 yarn web            # Abrir en el navegador
 yarn lint           # Verificar estilo de código
+npx tsc --noEmit    # Verificar tipos de TypeScript
+
+# Instalar paquetes con versión compatible al SDK
+npx expo install expo-image-picker
+npx expo install expo-location
+
+# Limpiar caché si hay problemas
+npx expo start --clear
 ```
 
 ## Recursos útiles
@@ -515,5 +727,7 @@ yarn lint           # Verificar estilo de código
 - [Documentación de Expo Router](https://docs.expo.dev/router/introduction/)
 - [Documentación de AsyncStorage](https://react-native-async-storage.github.io/async-storage/)
 - [Documentación de Zod](https://zod.dev)
+- [expo-image-picker — Docs oficiales](https://docs.expo.dev/versions/latest/sdk/imagepicker/)
+- [expo-location — Docs oficiales](https://docs.expo.dev/versions/latest/sdk/location/)
 - [React Native — Core Components](https://reactnative.dev/docs/components-and-apis)
 - [React — Hooks API](https://react.dev/reference/react)
