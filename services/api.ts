@@ -16,7 +16,15 @@ const request = async <T>(
   const response = await fetch(`${BASE_URL}${path}`, { ...options, headers })
 
   if (!response.ok) {
-    throw new Error(`${options.method ?? "GET"} ${path} falló: ${response.status}`)
+    const body = await response.json().catch(() => null)
+    const serverMsg =
+      body?.message ??
+      body?.error ??
+      (Array.isArray(body?.errors)
+        ? body.errors.map((e: { message: string }) => e.message).join(". ")
+        : null) ??
+      `Error ${response.status}`
+    throw new Error(serverMsg)
   }
 
   if (response.status === 204) return undefined as T

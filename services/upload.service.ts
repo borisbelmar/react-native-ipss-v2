@@ -17,7 +17,8 @@ export const uploadImage = async (uri: string, token: string): Promise<string> =
   })
 
   if (!response.ok) {
-    throw new Error(`Upload falló: ${response.status}`)
+    const body = await response.json().catch(() => null)
+    throw new Error(body?.error ?? body?.message ?? `Error al subir imagen (${response.status})`)
   }
 
   const data = await response.json()
