@@ -23,6 +23,9 @@ const MAPPING = {
   "chevron.right": "chevron-right",
   "person.circle": "person",
   "doc.text.fill": "description",
+  "camera.fill": "camera-alt",
+  "location.fill": "location-on",
+  "folder.fill": "folder",
 } as IconMapping;
 
 /**
