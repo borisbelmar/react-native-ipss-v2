@@ -1,6 +1,7 @@
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router"
-import { Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"
+import { Alert, Image, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"
 
+import { IconSymbol } from "@/components/ui/icon-symbol"
 import { colors } from "@/constants/theme"
 import { useNotes } from "@/hooks/useNotes"
 import { useCallback } from "react"
@@ -57,6 +58,26 @@ export default function NoteDetailScreen() {
         <Text style={styles.date}>{new Date(nota.creadaEn).toLocaleDateString()}</Text>
         <View style={styles.divider} />
         <Text style={styles.content}>{nota.contenido}</Text>
+
+        {nota.photoUri && (
+          <>
+            <Text style={styles.sectionTitle}>Foto</Text>
+            <Image source={{ uri: nota.photoUri }} style={styles.image} />
+          </>
+        )}
+
+        {nota.location && (
+          <>
+            <Text style={styles.sectionTitle}>Ubicación</Text>
+            <View style={styles.locationRow}>
+              <IconSymbol name="location.fill" size={16} color={colors.muted} />
+              <Text style={styles.locationText}>
+                {nota.location.latitude.toFixed(4)}, {nota.location.longitude.toFixed(4)}
+              </Text>
+            </View>
+          </>
+        )}
+
         <View style={styles.actions}>
           <TouchableOpacity
             style={styles.editButton}
@@ -81,6 +102,10 @@ const styles = StyleSheet.create({
   date: { fontSize: 14, color: colors.muted, marginBottom: 16 },
   divider: { height: 1, backgroundColor: colors.border, marginBottom: 16 },
   content: { fontSize: 16, color: colors.text, lineHeight: 24 },
+  sectionTitle: { fontSize: 14, fontWeight: "600", color: colors.text, marginTop: 20, marginBottom: 8 },
+  image: { width: "100%", height: 250, borderRadius: 8, marginBottom: 8 },
+  locationRow: { flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 8 },
+  locationText: { fontSize: 14, color: colors.muted },
   actions: { flexDirection: "row", gap: 12, marginTop: 32 },
   editButton: { flex: 1, backgroundColor: colors.tint, borderRadius: 8, padding: 14, alignItems: "center" },
   editButtonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
