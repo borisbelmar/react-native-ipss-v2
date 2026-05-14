@@ -2,15 +2,15 @@
 
 > Este documento no solo explica qué hace la app, sino **cómo se pensó cada decisión** mientras la construíamos. Si estás aprendiendo React Native, la idea es que leas esto y entiendas el porqué de cada archivo.
 >
-> Este README documenta el estado actual del proyecto después de completar la **Unidad 2 (CRUD local con AsyncStorage)** y la **Unidad 3 - Parte A (APIs del dispositivo: cámara, galería y GPS)**.
+> Este README documenta el estado actual del proyecto después de completar la **Unidad 2 (CRUD local con AsyncStorage)** y la **Unidad 3 (APIs del dispositivo + Integración con Backend REST)**.
 
 ---
 
 ## ¿Qué es esto?
 
-Una app de notas simple pero completa: puedes crear notas, verlas, editarlas y eliminarlas. Las notas pueden incluir **fotos** (desde la cámara o galería) y **ubicación GPS**. Todo se guarda en el teléfono (no necesita internet ni backend) usando AsyncStorage.
+Una app de notas simple pero completa: puedes crear notas, verlas, editarlas y eliminarlas. Las notas pueden incluir **fotos** (desde la cámara o galería) y **ubicación GPS**. Los datos se sincronizan con una **API REST** usando JWT para autenticación.
 
-Construida con **React Native**, **Expo**, **TypeScript**, **Expo Router**, **AsyncStorage**, **Zod**, **expo-image-picker** y **expo-location**.
+Construida con **React Native**, **Expo**, **TypeScript**, **Expo Router**, **Zod**, **expo-image-picker**, **expo-location** y **expo-secure-store**.
 
 ---
 
@@ -22,10 +22,12 @@ Construida con **React Native**, **Expo**, **TypeScript**, **Expo Router**, **As
 | **Expo** | SDK 54 | Nos evita tener que instalar Xcode o Android Studio para empezar |
 | **Expo Router** | ~6.0 | La navegación se define con archivos y carpetas, como en Next.js |
 | **TypeScript** | ~5.9 | El compilador nos avisa si escribimos algo mal antes de correr la app |
-| **AsyncStorage** | 2.x | Guarda las notas en el teléfono. Es como `localStorage` pero asíncrono |
+| **AsyncStorage** | 2.x | Guarda datos locales en el teléfono |
 | **Zod** | 4.x | Validamos formularios y obtenemos tipos TypeScript automáticamente |
 | **expo-image-picker** | 17.x | Acceso a cámara y galería para adjuntar fotos a las notas |
 | **expo-location** | 19.x | Acceso al GPS para registrar dónde se creó cada nota |
+| **expo-secure-store** | 15.x | Almacena el JWT de forma segura (Keychain/Keystore nativo) |
+| **fetch** (nativo) | — | Cliente HTTP para la API REST. Sin librerías externas |
 
 ---
 
@@ -454,13 +456,22 @@ La lista, que tiene una cabecera personalizada, usa `SafeAreaView` con `edges={[
 ```
 Usuario abre la app
         ↓
-Login (app/index.tsx)
-  El usuario ingresa el password "1234"
-  useLogin valida y llama router.push("/(tabs)/notes")
+AuthProvider lee el token guardado en SecureStore
         ↓
+¿Hay token válido?
+  ├── Sí → Redirect directo a /(tabs)/notes (login invisible)
+  └── No → Login/Register (app/index.tsx)
+                ↓
+          Ingresa email + password (o se registra)
+                ↓
+          POST /auth/login (o /auth/register)
+          Recibe { token } → lo guarda en SecureStore
+                ↓
+          Redirige a /(tabs)/notes
+                ↓
 Lista de notas (notes/index.tsx)
   useFocusEffect dispara recargar() al recibir foco
-  useNotes carga las notas desde AsyncStorage
+  useNotes carga las notas desde la API (GET /notes)
   FlatList renderiza una tarjeta por cada nota
         ↓
      ┌────────────────────────────────────────┐
@@ -469,11 +480,12 @@ Lista de notas (notes/index.tsx)
   router.push(".../create")            router.push(".../[id]")
         ↓                                        ↓
   Crear nota                              Detalle de nota
-  Formulario vacío                        Muestra título y contenido
+  Formulario vacío                        Muestra título, contenido
+  Sube imagen (si hay) → POST /notes/upload   foto y ubicación
   Zod valida al guardar                   Botón Editar → ".../[id]/edit"
-  crearNota() → AsyncStorage              Botón Eliminar → Alert → eliminarNota()
-  router.back()                           router.back()
-        ↓                                        ↓
+  crearNota() → POST /notes               Botón Eliminar → Alert
+  router.back()                           eliminarNota() → DELETE /notes/:id
+        ↓                                        router.back()
         └────────────────────────────────────────┘
                             ↓
             Lista se recarga (useFocusEffect dispara recarga)
@@ -675,16 +687,172 @@ En la lista (`note-item.tsx`), las notas con foto o ubicación muestran badges i
 | `getCurrentPositionAsync` demora mucho | El GPS tarda en obtener señal | Mostrar un loading mientras se obtiene |
 | `result.cancelled` (doble l) es undefined | API antigua, la propiedad cambió | Usar `result.canceled` (sin doble l) |
 
+---
+
+### Paso 8: Integración con Backend (API REST + JWT)
+
+En la **Unidad 3 — Parte B** reemplazamos AsyncStorage por una API real. El cambio ocurre **solo dentro de los hooks**. Las pantallas no se tocan — esa es la ventaja de la arquitectura que construimos desde el principio.
+
+#### ¿Qué cambia y qué no cambia?
+
+| | Antes (Parte A) | Después (Parte B) |
+|---|---|---|
+| Fuente de datos | AsyncStorage en el dispositivo | API REST en el servidor |
+| Auth | Password hardcodeado `"1234"` | JWT real con login/register |
+| Token | No existía | Guardado en SecureStore |
+| Errores | Falla de I/O en disco | Errores de red, 401, 500 |
+| Firma de `useNotes` | `{ notas, crearNota, ... }` | **Exactamente igual** |
+
+#### Instalación
+
+```bash
+npx expo install expo-secure-store
+```
+
+#### El modelo de datos del servidor vs el modelo local
+
+La API usa nombres en inglés (`title`, `content`, `createdAt`) y el `id` es numérico. Creamos una interfaz `NotaAPI` para los datos del servidor y la mapeamos al modelo local `Nota` que los componentes ya conocen.
+
+```typescript
+// types/nota.ts — modelo del servidor
+export interface NotaAPI {
+  id: number
+  title: string
+  content: string
+  imageUrl: string | null
+  latitude: number | null
+  longitude: number | null
+  createdAt: string
+  // ...
+}
+
+// Funciones de mapeo entre API ↔ UI
+export const mapNotaAPItoUI = (api: NotaAPI): Nota => ({
+  id: api.id.toString(),
+  titulo: api.title,
+  contenido: api.content,
+  creadaEn: api.createdAt,
+  photoUri: api.imageUrl ?? undefined,
+  location: api.latitude != null ? { latitude: api.latitude, longitude: api.longitude } : undefined,
+})
+```
+
+#### Servicios — la capa HTTP
+
+Extraemos el `fetch` en archivos de servicio para centralizar la URL base, los headers y el manejo de errores.
+
+**`services/api.ts`** — Servicio HTTP genérico:
+
+```typescript
+const request = async <T>(path: string, options: RequestInit, token?: string): Promise<T> => {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(options.headers as Record<string, string>),
+  }
+  if (token) headers["Authorization"] = `Bearer ${token}`
+
+  const response = await fetch(`${BASE_URL}${path}`, { ...options, headers })
+
+  if (!response.ok) {
+    // Intenta parsear el error del servidor para mostrar mensajes en español
+    const body = await response.json().catch(() => null)
+    const serverMsg = body?.message ?? body?.error ??
+      (Array.isArray(body?.errors) ? body.errors.map(e => e.message).join(". ") : null) ??
+      `Error ${response.status}`
+    throw new Error(serverMsg)
+  }
+
+  if (response.status === 204) return undefined as T
+  return response.json()
+}
+```
+
+**`services/upload.service.ts`** — Subida de imágenes a `POST /notes/upload` en `multipart/form-data`. No se incluye `Content-Type` manual — fetch lo genera con el `boundary` automáticamente.
+
+#### El flujo de autenticación
+
+La app ahora tiene autenticación real con **JWT**. Separamos la lógica en dos archivos:
+
+| Archivo | Responsabilidad |
+|---|---|
+| `contexts/AuthContext.tsx` | Proveedor de contexto con `AuthProvider`. Maneja el estado del token, login real contra `POST /auth/login`, register contra `POST /auth/register`, y logout. |
+| `hooks/useAuth.ts` | Hook consumidor del contexto. Solo importa el context y devuelve `{ token, loading, login, register, logout }`. |
+
+```typescript
+// Flujo de autenticación
+// 1. App inicia → AuthProvider lee SecureStore
+// 2. ¿Hay token guardado?
+//    ├── Sí → LoginScreen redirige a /(tabs)/notes automáticamente
+//    └── No → Se muestra el formulario (login o registro)
+// 3. Login exitoso → SecureStore.setItemAsync → redirige
+// 4. Logout → SecureStore.deleteItemAsync → redirige al login
+```
+
+#### `useNotes` migrado a la API
+
+El hook que antes leía de AsyncStorage ahora llama a la API, pero su **firma de retorno es idéntica**. Los componentes no saben que cambió nada.
+
+```typescript
+// hooks/useNotes.ts — versión API
+export const useNotes = () => {
+  const { token } = useAuth()  // token desde el contexto global
+  // ...
+  const cargarNotas = useCallback(async () => {
+    const data = await apiService.get<NotaAPI[]>("/notes", token)
+    setNotas(data.map(mapNotaAPItoUI))  // mapeo API → UI
+  }, [token])
+  // crearNota, editarNota, eliminarNota — mismos nombres, mismas firmas
+}
+```
+
+#### Subida de imágenes en 2 pasos
+
+1. El usuario selecciona/toma una foto → `useImagePicker` da una URI local
+2. Al guardar la nota, se sube la imagen primero: `uploadImage(uri, token)` → `{ imageUrl }`
+3. La URL pública se pasa al crear la nota: `crearNota({ ..., photoUri: imageUrl })`
+
+```typescript
+// En create.tsx
+onSubmit: async (data) => {
+  let photoUri: string | undefined
+  if (imageUri && token) {
+    photoUri = await uploadImage(imageUri, token)  // sube y obtiene URL pública
+  }
+  await crearNota({
+    ...(data as CreateNotaInput),
+    photoUri,
+    location: location ?? undefined,
+  })
+  router.back()
+}
+```
+
+#### Variables de entorno
+
+La URL del backend se configura con una variable de entorno pública de Expo:
+
+```bash
+# .env.example — copiar a .env y personalizar
+EXPO_PUBLIC_API_URL=https://hono-api-yt2r.onrender.com
+```
+
+El archivo `.env` está en `.gitignore`. Las variables `EXPO_PUBLIC_*` se inyectan en tiempo de build.
+
+---
+
 Cada capa del proyecto tiene una sola responsabilidad. Si mezclas lógica en el componente, se vuelve difícil de entender:
 
 | Capa | Archivo(s) | Qué hace |
 |---|---|---|
 | **Tipos** | `types/nota.ts` | Define la forma de los datos. Una sola fuente de verdad. |
 | **Validación** | `schemas/nota.schema.ts` | Reglas de negocio de los formularios. Zod genera los tipos. |
-| **CRUD** | `hooks/useNotes.ts` | Lee y escribe en AsyncStorage. Patrón read-modify-write. |
+| **CRUD** | `hooks/useNotes.ts` | CRUD completo contra la API REST. Antes usaba AsyncStorage. |
 | **Formulario** | `hooks/useNotaForm.ts` | Estado, errores y submit. Valida con Zod antes de enviar. |
 | **Cámara/Galería** | `hooks/useImagePicker.ts` | Permisos, captura de foto y selección de galería. |
 | **GPS** | `hooks/useLocation.ts` | Permisos de ubicación y obtención de coordenadas. |
+| **Auth** | `contexts/AuthContext.tsx` + `hooks/useAuth.ts` | Login/register real con JWT, almacenado en SecureStore. |
+| **HTTP** | `services/api.ts` | Cliente HTTP genérico con fetch. Inyecta token en cada request. |
+| **Upload** | `services/upload.service.ts` | Subida de imágenes a la API en multipart/form-data. |
 | **Vistas** | `app/(tabs)/notes/*.tsx` | Renderiza la UI y captura eventos del usuario. |
 | **Navegación** | `*/_layout.tsx` | Define rutas, transiciones y cabeceras. |
 
@@ -693,13 +861,19 @@ Cada capa del proyecto tiene una sola responsabilidad. Si mezclas lógica en el 
 ## Errores comunes que encontramos
 
 | Error | Causa | Solución |
-|---|---|---|
+|---|---|---|---|
 | `JSON.parse` lanza error | `getItem` retornó `null` | Verificar: `raw ? JSON.parse(raw) : []` |
 | La lista no se actualiza al volver | `useEffect` no se re-ejecuta | Usar `useFocusEffect` para recargar al recibir foco |
 | El formulario de edición queda vacío | `defaultValues` llega después del primer render | Agregar `useEffect` en `useNotaForm` para sincronizar |
 | Hooks en orden diferente entre renders | Llamar hooks condicionalmente (después de un `if`) | Siempre llamar todos los hooks antes de cualquier `return` |
 | El teclado tapa los inputs | Falta `KeyboardAvoidingView` | Envolver el formulario con `KeyboardAvoidingView` |
 | Botón volver dice "index" | La pantalla anterior no tiene título definido | Usar `headerBackTitle` en el `_layout.tsx` |
+| `Network request failed` | Sin conexión o URL incorrecta | Verificar `EXPO_PUBLIC_API_URL` en `.env` |
+| `401 Unauthorized` | Token expirado o no enviado | Hacer login de nuevo |
+| fetch no lanza error en 4xx/5xx | fetch solo falla con errores de red | Verificar `response.ok` (lo hace `apiService` automáticamente) |
+| Token legible por otras apps | Token guardado en AsyncStorage | Migrar a `expo-secure-store` |
+| Upload falla con error de parsing | `Content-Type` seteado manualmente en multipart | No incluir `Content-Type` — dejar que fetch lo genere |
+| `id` es número en la API pero string en UI | El tipo cambió | Las funciones `mapNotaAPItoUI` convierten `id.toString()` |
 
 ---
 
@@ -716,6 +890,11 @@ npx tsc --noEmit    # Verificar tipos de TypeScript
 # Instalar paquetes con versión compatible al SDK
 npx expo install expo-image-picker
 npx expo install expo-location
+npx expo install expo-secure-store
+
+# Configurar entorno (copiar y llenar)
+cp .env.example .env
+# Editar .env con la URL de tu API
 
 # Limpiar caché si hay problemas
 npx expo start --clear
@@ -729,5 +908,9 @@ npx expo start --clear
 - [Documentación de Zod](https://zod.dev)
 - [expo-image-picker — Docs oficiales](https://docs.expo.dev/versions/latest/sdk/imagepicker/)
 - [expo-location — Docs oficiales](https://docs.expo.dev/versions/latest/sdk/location/)
+- [expo-secure-store — Docs oficiales](https://docs.expo.dev/versions/latest/sdk/securestore/)
 - [React Native — Core Components](https://reactnative.dev/docs/components-and-apis)
 - [React — Hooks API](https://react.dev/reference/react)
+- [fetch API en React Native](https://reactnative.dev/docs/network)
+- [Expo Router — Autenticación](https://docs.expo.dev/router/advanced/authentication/)
+- [Expo — Variables de entorno](https://docs.expo.dev/guides/environment-variables/)
