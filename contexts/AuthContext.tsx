@@ -1,6 +1,6 @@
 import { createContext, useCallback, useEffect, useState } from "react"
 import { useRouter } from "expo-router"
-import * as SecureStore from "expo-secure-store"
+import { getItemAsync, setItemAsync, deleteItemAsync } from "../utils/secureStore"
 
 import { apiService } from "../services/api"
 
@@ -22,7 +22,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const router = useRouter()
 
   useEffect(() => {
-    SecureStore.getItemAsync(TOKEN_KEY)
+    getItemAsync(TOKEN_KEY)
       .then((saved) => {
         if (saved) setToken(saved)
       })
@@ -35,7 +35,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         "/auth/login",
         { email, password },
       )
-      await SecureStore.setItemAsync(TOKEN_KEY, newToken)
+      await setItemAsync(TOKEN_KEY, newToken)
       setToken(newToken)
       router.replace("/(tabs)/notes")
     },
@@ -48,7 +48,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         "/auth/register",
         { email, password },
       )
-      await SecureStore.setItemAsync(TOKEN_KEY, newToken)
+      await setItemAsync(TOKEN_KEY, newToken)
       setToken(newToken)
       router.replace("/(tabs)/notes")
     },
@@ -56,7 +56,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   )
 
   const logout = useCallback(async () => {
-    await SecureStore.deleteItemAsync(TOKEN_KEY)
+    await deleteItemAsync(TOKEN_KEY)
     setToken(null)
     router.replace("/")
   }, [router])
